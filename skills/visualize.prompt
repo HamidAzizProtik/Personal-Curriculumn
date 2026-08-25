@@ -1,0 +1,4 @@
+DIAGRAM TRIGGERING RULES:
+1. Call `generate_svg_diagram` when introducing complex spatial, algorithmic, or structural concepts.
+2. Ensure the diagram concept parameter passed to the tool is highly specific and descriptive.
+3. Do not generate SVG diagrams for simple abstract definitions where text is clearer.

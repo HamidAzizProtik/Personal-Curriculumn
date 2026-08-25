@@ -1,0 +1,348 @@
+# ============================================================================
+# BRUTAL .gitignore  —  ai-tutor
+# ----------------------------------------------------------------------------
+# If any of these were ever committed in the past, they are still in git
+# HISTORY. gitignore does NOT scrub history. You must run
+#   git log --all --oneline -- api.env vault_path.txt TODO.md
+# and if anything appears, purge with `git filter-repo` and ROTATE the key.
+# ============================================================================
+
+# ============================ 1. SECRETS / CREDENTIALS ============================
+# --- This project's actual secret files (CRITICAL) ---
+api.env
+*.env
+.env
+.env.*
+.envrc
+*.env.local
+*.env.*.local
+
+# --- Bare key tokens / credential material ---
+*.key
+*.pem
+*.p12
+*.pfx
+*.pkey
+*.keystore
+*.jks
+*.kdbx
+*.secret
+*.secrets
+secrets.*
+*.token
+*.tokens
+*.passwd
+password*
+passphrase*
+*.gpg
+*.asc
+*.age
+id_rsa
+id_rsa.pub
+id_ed25519
+id_ed25519.pub
+id_dsa
+id_ecdsa
+id_ecdsa.pub
+known_hosts
+authorized_keys
+
+# --- Credential/config files that can embed tokens ---
+.netrc
+.npmrc
+.pypirc
+.aws/credentials
+.aws/config
+.azure/
+.gcloud/
+config.json
+settings.json
+secrets.json
+credentials.json
+credentials*
+*.credentials
+service-account*.json
+*-service-account.json
+firebase*.json
+firebaseConfig.*
+*.tfvars
+terraform.tfstate
+terraform.tfstate.*
+*.backend
+
+# ============================ 2. PRIVATE / PERSONAL DATA ============================
+# --- Your explicit requests ---
+TODO.md
+todo.md
+TODO*
+todo*
+vault_path.txt
+vault_path*
+*.vault
+
+# --- Obsidian / personal knowledge vault (defensive; lives outside repo too) ---
+personal-curriculumn/
+personal-curriculum/
+*.obsidian/
+.obsidian/
+private.md
+PRIVATE*
+notes-private*
+*.local.md
+*.personal.md
+
+# ============================ 3. OPERATING SYSTEMS ============================
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+System Volume Information/
+*.lnk
+*.cab
+*.msi
+*.msm
+*.msp
+*.sln.docstates
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100/
+.Trashes
+.fseventsd
+.DocumentRevisions-V100/
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+
+# Linux
+*~
+.directory
+.Trash-*
+.thumbnails/
+.opera/
+.gnome/
+
+# ============================ 4. IDES / EDITORS ============================
+# VS Code / VSCodium
+.vscode/*
+!.vscode/settings.json
+*.code-workspace
+.vscode-test/
+
+# JetBrains (PyCharm, IntelliJ, etc.)
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# Vim / Neovim
+*.swp
+*.swo
+*~
+.netrwhist
+*.un~
+.vim/
+.viminfo
+Session.vim
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Emacs
+\#*\#
+/.emacs.d/
+*.elc
+auto-save-list/
+
+# Eclipse / Aptana
+.project
+.classpath
+.settings/
+.remote-sync.json
+
+# Atom
+.atom/
+~/.atom/
+
+# Notepad++ / generic editor backups
+*.bak
+*.tmp
+*~
+*.save
+
+# ============================ 5. PROGRAMMING LANGUAGES / TOOLING ============================
+# --- Python (this project) ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+wheels/
+.venv/
+venv/
+env/
+ENV/
+.python-version
+.pytest_cache/
+.pytest/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+.cache/
+.ipynb_checkpoints/
+*.ipynb
+
+# --- Node.js / npm / yarn / pnpm ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-store/
+.pnpm-debug.log
+.yarn/
+.next/
+.nuxt/
+.vuepress/dist/
+.svelte-kit/
+dist/
+.parcel-cache/
+web_modules/
+
+# --- Java / JVM / Kotlin / Scala ---
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+*.hprof
+target/
+.gradle/
+gradle-app.setting
+!.gradle/
+build/
+.mvn/
+mvnw*
+
+# --- C / C++ ---
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+*.out
+*.app
+
+# --- Go ---
+*.test
+*.out
+/go/bin/
+vendor/
+
+# --- Rust ---
+/target/
+**/*.rs.bk
+Cargo.lock
+#.lock (keep if you want reproducible builds; uncomment to ignore)
+
+# --- .NET / C# ---
+bin/
+obj/
+*.user
+*.suo
+*.vspscc
+*.vssscc
+
+# --- Ruby ---
+*.gem
+.bundle/
+vendor/bundle
+Gemfile.lock
+.ruby-version
+.ruby-gemset
+
+# --- PHP / Composer ---
+/vendor/
+composer.phar
+composer.lock
+
+# --- Swift ---
+.swiftpm/
+.build/
+DerivedData/
+
+# --- Dart / Flutter ---
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+.pub-cache/
+
+# ============================ 6. BUILD / CACHE / RUNTIME / LOGS ============================
+logs/
+*.log
+*.logs
+*.log.*
+.cache/
+.tmp/
+tmp/
+temp/
+*.pid
+*.seed
+*.pid.lock
+.session
+sessions/
+.history/
+.agent/
+memory/
+*.memory
+*.db
+*.sqlite
+*.sqlite3
+*.sql
+*.csv
+*.dat
+*.bin
+.output/
+output/
+exports/
+downloads/
+uploads/
+artifacts/
+coverage/
+.hugo_build.lock
+
+# ============================ 7. MISC SAFETY NET ============================
+# Local override files you might create
+*.local
+local.*
+*-local.*
+
+# Package lockfiles that occasionally embed private registry auth
+# (package-lock.json / yarn.lock are usually safe; uncomment only if needed)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# ============================ 8. RECOVERY / REMOVAL ============================
+# If you ever staged a private file by accident, remove it from tracking
+# (keeps the local file) with:
+#     git rm --cached <file>
+# then commit. The patterns above will block it from future commits.
+# For files already in history, use `git filter-repo --path <file> --invert-paths`
+# and then ROTATE any exposed keys.
