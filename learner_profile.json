@@ -1,29 +1,3 @@
 {
-  "topics": {
-    "test topic": {
-      "topic": "test topic",
-      "created": 1787722014.5854273,
-      "updated": 1787722049.6775596,
-      "sessions": 1,
-      "calibration": {
-        "probed": true,
-        "estimated_level": "Intermediate",
-        "known_prerequisites": [
-          "basic arithmetic: order of operations",
-          "elementary algebra: solving linear equations",
-          "propositional logic: truth tables"
-        ],
-        "knowledge_gaps": [
-          "advanced set notation"
-        ]
-      },
-      "plan": {
-        "dag": null,
-        "planned": false
-      },
-      "probe_results": [],
-      "mastered_nodes": [],
-      "quiz_history": []
-    }
-  }
+  "topics": {}
 }

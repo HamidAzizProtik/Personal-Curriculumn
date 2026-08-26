@@ -5,8 +5,28 @@ from google.genai import types
 from config import MODEL, get_client
 from extensions.cache_store import cache_get, cache_set
 
+try:
+    from throttle import with_retry
+except Exception:  # throttle ships alongside; fall back to a direct call
+    def with_retry(fn, *a, **k):
+        return fn(*a, **k)
+
+import re
+
 # In-session cache so repeated/re-phrased research queries don't re-hit the API.
 _CACHE = {}
+
+
+def _canon(query: str) -> str:
+    """Normalize a research query so near-identical phrasings share a cache key.
+
+    Lowercases, strips punctuation, and collapses whitespace so e.g.
+    "Research: the chain rule." and "research the chain rule" hit the same
+    cached result instead of paying for a second API call.
+    """
+    q = (query or "").lower()
+    q = re.sub(r"[^a-z0-9]+", " ", q)
+    return re.sub(r"\s+", " ", q).strip()
 
 
 def _make_search_tool():
@@ -39,10 +59,11 @@ def _extract_citations(response):
 
 def research_topic(query: str, grounded: bool = True) -> str:
     """Gather reliable, cited background on `query` (Google Search grounding when available). Returns text plus a 'Sources:' block; results are cached per query."""
-    cache_key = (query, grounded)
+    cq = _canon(query)
+    cache_key = (cq, grounded)
     if cache_key in _CACHE:
         return _CACHE[cache_key]
-    disk = cache_get("research", f"{query}|{grounded}")
+    disk = cache_get("research", f"{cq}|{grounded}")
     if disk is not None:
         _CACHE[cache_key] = disk
         return disk
@@ -69,13 +90,18 @@ def research_topic(query: str, grounded: bool = True) -> str:
                 pass
     configs.append(types.GenerateContentConfig(temperature=0.2))  # fallback: no grounding
 
+    def _send(cfg):
+        return client.models.generate_content(
+            model=MODEL, contents=prompt, config=cfg
+        )
+
     response = None
     err = None
     for cfg in configs:
         try:
-            response = client.models.generate_content(
-                model=MODEL, contents=prompt, config=cfg
-            )
+            # with_retry paces the call and backs off on 429/5xx instead of
+            # killing the session.
+            response = with_retry(_send, cfg)
             break
         except Exception as e:
             err = e
@@ -97,5 +123,5 @@ def research_topic(query: str, grounded: bool = True) -> str:
         text += "\n\n(No external sources grounded for this query.)"
 
     _CACHE[cache_key] = text
-    cache_set("research", f"{query}|{grounded}", text)
+    cache_set("research", f"{cq}|{grounded}", text)
     return text

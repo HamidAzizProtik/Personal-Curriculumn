@@ -49,6 +49,11 @@ NOTE-TAKING RULES (Obsidian):
 - Always include citations returned by `research_topic` ("Sources:").
 - Use `record_source` for primary-text quotes when analyzing books.
 - Diagrams are embedded automatically as `![[...]]`; do not paste raw image code.
+- RENDER ALL MATHEMATICS AND EQUATIONS IN LATEX: inline with `$...$` and
+  display/block with `$$...$$`. Use clean Markdown (headings, lists, bold,
+  code spans) for structure. This is what makes formulas render as live math
+  in Obsidian and reads cleanly in the terminal — never paste plain ASCII art
+  where LaTeX applies.
 
 Remember: the student is learning advanced material (A-level maths, philosophy, fullstack coding, etc.). Accuracy, reliable sourcing, and a calm, structured classroom cadence matter more than speed.
 
