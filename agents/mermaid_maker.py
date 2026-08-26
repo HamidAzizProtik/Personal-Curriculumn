@@ -1,8 +1,13 @@
 import os
 from config import MODEL, get_client
+from extensions.cache_store import cache_get, cache_set
 
 def generate_mermaid_dag(topic: str, prerequisite_summary: str = "Baseline") -> str:
-    """Sub-agent: Generates clean Mermaid.js graph TD code for learning paths."""
+    """Generate Mermaid `graph TD` code for the lesson path given `topic` and a `prerequisite_summary`. Returns raw Mermaid code (no fences)."""
+    cache_key = f"{topic}|{prerequisite_summary}"
+    cached = cache_get("mermaid", cache_key)
+    if cached is not None:
+        return cached
     try:
         client = get_client()
         prompt = f"""
@@ -24,6 +29,9 @@ Keep node text short and granular.
             text = text.replace("```mermaid", "").replace("```", "").strip()
         elif text.startswith("```"):
             text = text.replace("```", "").strip()
-        return text if text else "graph TD\n    Node[No DAG generated]"
+        if not text:
+            return "graph TD\n    Node[No DAG generated]"
+        cache_set("mermaid", cache_key, text)
+        return text
     except Exception as e:
         return f"graph TD\n    Error[Mermaid Generation Error: {str(e)}]"

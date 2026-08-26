@@ -9,7 +9,7 @@ from google import genai
 from google.genai import types
 from google.genai.errors import APIError
 
-from config import MODEL, VERSION
+from config import MODEL, VERSION, get_client
 from extensions.md_log import log_to_obsidian, get_obsidian_path
 from extensions.quiz import ask_quiz
 from extensions.source import record_source
@@ -19,6 +19,7 @@ from extensions.practice import practice_problem, build_practice_tools
 from agents.researcher import research_topic
 from agents.mermaid_maker import generate_mermaid_dag
 from agents.diagram_maker import generate_diagram
+from io_helpers import is_interactive, read_reply
 
 
 def load_api_env():
@@ -45,6 +46,37 @@ def load_api_env():
                 os.environ["GEMINI_API_KEY"] = line
 
 
+def _stream_chat(chat, message, prefix="[Tutor]: "):
+    """Send a message with response streaming.
+
+    Prints the tutor's text tokens live (so the session feels responsive
+    instead of hanging on a blank line) and returns a lightweight object
+    exposing `.text` (full joined text) and `.function_calls` (list) — exactly
+    what the main loop already consumes.
+    """
+    class _Streamed:
+        def __init__(self):
+            self.text = ""
+            self.function_calls = []
+
+    out = _Streamed()
+    printed_prefix = False
+    # google-genai 2.x exposes streaming as a dedicated method (not a kwarg).
+    for chunk in chat.send_message_stream(message):
+        if getattr(chunk, "text", None):
+            if not printed_prefix and prefix:
+                print("\n" + prefix, end="", flush=True)
+                printed_prefix = True
+            print(chunk.text, end="", flush=True)
+            out.text += chunk.text
+        fcs = getattr(chunk, "function_calls", None)
+        if fcs:
+            out.function_calls.extend(fcs)
+    if printed_prefix:
+        print()
+    return out
+
+
 def run_tutor(topic: str):
     load_api_env()
 
@@ -54,11 +86,9 @@ def run_tutor(topic: str):
               "Set it or add it to api.env.")
         return
 
-    # Set explicit 30s timeout to prevent socket hangs
-    client = genai.Client(
-        api_key=api_key,
-        http_options=types.HttpOptions(timeout=30000)
-    )
+    # Reuse the shared, pooled client (same generous 120s timeout) so sub-agent
+    # calls and the tutor share one connection pool instead of two.
+    client = get_client()
 
     prompt_path = os.path.join(CURRENT_DIR, "skills", "teach.prompt")
     with open(prompt_path, "r", encoding="utf-8") as f:
@@ -112,9 +142,12 @@ def run_tutor(topic: str):
     )
 
     try:
-        response = chat.send_message(f"I want to learn: {topic}. Initiate the PROBE phase.")
+        response = _stream_chat(chat, f"I want to learn: {topic}. Initiate the PROBE phase.")
     except APIError as e:
-        print(f"\n[API Error]: {e.message}")
+        print(f"\n[API Error]: {getattr(e, 'message', str(e))}")
+        return
+    except Exception as e:
+        print(f"\n[API Error]: {str(e)}")
         return
 
     while True:
@@ -132,7 +165,7 @@ def run_tutor(topic: str):
                 # current phase contract before it can run. This is what makes
                 # PROBE -> PLAN -> TEACH a real state machine rather than a
                 # prompt suggestion.
-                allowed, block_msg = pm.can_execute(fn_name)
+                allowed, block_msg = pm.can_execute(fn_name, fn_args)
                 if not allowed:
                     res = block_msg
                 else:
@@ -191,21 +224,23 @@ def run_tutor(topic: str):
                 )
 
             try:
-                response = chat.send_message(function_responses)
+                response = _stream_chat(chat, function_responses)
             except Exception as e:
                 print(f"\n[Network Stalled / Timeout]: {str(e)}")
                 break
         else:
-            if response.text:
-                print(f"\n[Tutor]: {response.text}")
-            
-            user_input = input("\n[You]: ").strip()
+            user_input = read_reply("\n[You]: ")
+            if user_input is None:
+                # Headless / closed stdin: stop cleanly instead of crashing.
+                print("\n[Session ended]: input stream closed. Saving progress.")
+                break
+            user_input = user_input.strip()
             if user_input.lower() in ["exit", "quit"]:
                 print("Session ended. All progress saved in Obsidian.")
                 break
-            
+
             try:
-                response = chat.send_message(user_input)
+                response = _stream_chat(chat, user_input)
             except Exception as e:
                 print(f"\n[Network Stalled / Timeout]: {str(e)}")
                 break
@@ -216,15 +251,25 @@ def run_tutor(topic: str):
 
 
 if __name__ == "__main__":
-    # Topic can come from a CLI argument (e.g. `python main.py "mental math"`)
-    # for one-click/standalone launching, or be prompted interactively.
+    # Topic priority: CLI argument -> TUTOR_TOPIC env -> interactive prompt.
+    # This lets a headless launch supply a topic without a terminal.
     if len(sys.argv) > 1:
         target = " ".join(sys.argv[1:]).strip()
+    elif os.environ.get("TUTOR_TOPIC"):
+        target = os.environ["TUTOR_TOPIC"].strip()
     else:
-        try:
-            target = input("Enter topic to learn: ").strip()
-        except EOFError:
-            target = ""  # non-interactive launch (e.g. piped/empty stdin)
+        target = (read_reply("Enter topic to learn: ") or "").strip()
+
+    if not target:
+        if is_interactive():
+            print("[Error]: No topic provided. Pass it as an argument "
+                  "(main.py \"mental math\") or type one when prompted.")
+        else:
+            print("[Error]: No topic provided and no terminal to prompt. "
+                  "Pass it as an argument, set TUTOR_TOPIC, or pipe a topic "
+                  "via TUTOR_REPLIES.")
+        sys.exit(1)
+
     if target:
         try:
             run_tutor(target)

@@ -1,27 +1,14 @@
+from io_helpers import read_reply
+
+
 def practice_problem(problem: str, answer: str, hint: str = "") -> str:
-    """Present a practice problem to the student and capture their answer.
-
-    The tutor (model) authors the problem and knows the answer; this tool only
-    presents it, reads the student's free-text answer, and returns both so the
-    tutor can grade it, explain the method/shortcut, and log the result. This is
-    the APPLICATION loop: applying material is what locks understanding in, so
-    use it liberally — especially for skills like mental math. Do NOT reveal the
-    answer to the student in your message; grade their response yourself.
-
-    Args:
-        problem: the problem statement to present (e.g. "47 x 12, mentally").
-        answer: the correct answer (known to you, the tutor).
-        hint: an optional hint to show the student before they answer.
-    """
+    """Present a `problem` (with optional `hint`), read the student's free-text answer, and return both so you can grade it and log the result. Do NOT reveal `answer`."""
     print("\n==================== [ PRACTICE ] ====================")
     print(f"Solve (mentally if possible): {problem}")
     if hint:
         print(f"Hint: {hint}")
     print()
-    try:
-        student = input("Your answer: ").strip()
-    except EOFError:
-        student = ""
+    student = (read_reply("Your answer: ") or "").strip()
     print("=====================================================\n")
 
     return (

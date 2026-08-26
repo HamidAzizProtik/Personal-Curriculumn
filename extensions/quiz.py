@@ -1,7 +1,8 @@
 from extensions.md_log import log_to_obsidian
+from io_helpers import read_reply
 
 def ask_quiz(question: str, options: list[str], correct_idx: int, explanation: str) -> str:
-    """Presents an interactive multiple-choice terminal quiz and logs results to Obsidian."""
+    """Run a multiple-choice quiz: present `options`, read the student's choice, log the result, and return Correct/Incorrect with the explanation."""
     print(f"\n==================== [ QUIZ PROBE ] ====================")
     print(f"Question: {question}\n")
     for i, opt in enumerate(options):
@@ -9,8 +10,13 @@ def ask_quiz(question: str, options: list[str], correct_idx: int, explanation: s
     
     user_choice = -1
     while True:
+        raw = read_reply("\nYour Answer (enter option number): ")
+        if raw is None:
+            # Headless / no terminal: can't collect an answer, skip grading.
+            print("[headless] No answer supplied; skipping quiz grading.")
+            break
+        raw_input = raw.strip()
         try:
-            raw_input = input("\nYour Answer (enter option number): ").strip()
             choice = int(raw_input) - 1
             if 0 <= choice < len(options):
                 user_choice = choice

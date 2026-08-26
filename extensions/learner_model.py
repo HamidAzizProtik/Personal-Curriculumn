@@ -229,19 +229,7 @@ def build_learner_tools(learner: LearnerModel):
         explanation: str,
         difficulty: str = "medium",
     ) -> str:
-        """PROBE a specific prerequisite strand with a graded multiple-choice question.
-
-        Use this (NOT `ask_quiz`) during the PROBE phase for EVERY prerequisite
-        strand the lesson depends on, naming it exactly in `prerequisite`, and
-        set `difficulty` (easy/medium/hard) to reflect how deep the probe went.
-        Binary-search to the student's FAILURE boundary on each strand — probe
-        deeper (hard) once they get the easy/medium ones right. The result is
-        recorded against that precise prerequisite so the learner model maps
-        exactly which prerequisites are known vs missing, and the planner can
-        build a precise DAG. The harness enforces a minimum number of distinct
-        strands and quizzes, so probe thoroughly and broadly.
-        Returns the quiz result string.
-        """
+        """PROBE one prerequisite `strand` with a graded MCQ. Use during PROBE for EVERY strand the lesson depends on; binary-search easy->medium->hard to the student's failure point (harness caps total/per-strand probes). Result maps known vs missing prerequisites."""
         res = ask_quiz(
             question=question,
             options=options,
@@ -257,13 +245,7 @@ def build_learner_tools(learner: LearnerModel):
         knowledge_gaps: list[str],
         estimated_level: str = "",
     ) -> str:
-        """Optionally override the auto-derived calibration.
-
-        The harness already derives known/gap prerequisites automatically from
-        your `probe_prerequisite` results. Use this only to refine the estimated
-        level or add context the probes did not capture. SAVED to disk and
-        reloaded next session. Returns a status string.
-        """
+        """Optionally refine the auto-derived calibration (known gaps/level). Saved to disk and reloaded next session."""
         learner.record_calibration(
             known_prerequisites or [], knowledge_gaps or [], estimated_level or ""
         )

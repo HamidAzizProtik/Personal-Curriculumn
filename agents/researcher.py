@@ -3,6 +3,7 @@ from google import genai
 from google.genai import types
 
 from config import MODEL, get_client
+from extensions.cache_store import cache_get, cache_set
 
 # In-session cache so repeated/re-phrased research queries don't re-hit the API.
 _CACHE = {}
@@ -37,17 +38,14 @@ def _extract_citations(response):
 
 
 def research_topic(query: str, grounded: bool = True) -> str:
-    """Sub-agent: gather reliable, cited background on a topic.
-
-    When `grounded` (default), uses Google Search grounding so claims are
-    drawn from real web sources and returned with citations. If grounding
-    is unavailable or errors, it transparently falls back to ungrounded
-    generation. The returned text is meant to be logged into Obsidian,
-    including a 'Sources:' block when available.
-    """
+    """Gather reliable, cited background on `query` (Google Search grounding when available). Returns text plus a 'Sources:' block; results are cached per query."""
     cache_key = (query, grounded)
     if cache_key in _CACHE:
         return _CACHE[cache_key]
+    disk = cache_get("research", f"{query}|{grounded}")
+    if disk is not None:
+        _CACHE[cache_key] = disk
+        return disk
 
     try:
         client = get_client()
@@ -99,4 +97,5 @@ def research_topic(query: str, grounded: bool = True) -> str:
         text += "\n\n(No external sources grounded for this query.)"
 
     _CACHE[cache_key] = text
+    cache_set("research", f"{query}|{grounded}", text)
     return text

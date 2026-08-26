@@ -5,11 +5,18 @@ import uuid
 import struct
 import tempfile
 import subprocess
+import threading
 
 from google import genai
 from google.genai import types
 from config import MODEL, get_client
 from extensions.md_log import get_obsidian_path
+from extensions.cache_store import cache_get, cache_set
+
+# Sub-agent calls (diagram code-gen + vision review) may use a faster/cheaper
+# model than the tutor. Opt-in via GEMINI_AUX_MODEL; defaults to the tutor model
+# so behavior is unchanged unless explicitly set.
+_AUX_MODEL = os.environ.get("GEMINI_AUX_MODEL") or MODEL
 
 # Secrets that must NEVER be visible to the LLM-generated plotting code.
 _SECRET_KEYS = (
@@ -115,7 +122,7 @@ STRICT REQUIREMENTS:
 """.strip()
 
     response = get_client().models.generate_content(
-        model=MODEL,
+        model=_AUX_MODEL,
         contents=prompt,
         config=types.GenerateContentConfig(temperature=0.2),
     )
@@ -168,7 +175,7 @@ def _vision_verify(path: str, concept: str):
             '{"valid": true/false, "correct": true/false, "issues": "short description"}'
         )
         resp = get_client().models.generate_content(
-            model=MODEL,
+            model=_AUX_MODEL,
             contents=[prompt, types.Part.from_bytes(data=data, mime_type="image/png")],
             config=types.GenerateContentConfig(temperature=0.2),
         )
@@ -216,20 +223,134 @@ def _verify_diagram(path: str, concept: str):
     return True, issues
 
 
-def _run_plotting_code(full_code: str):
-    """Execute LLM-generated plotting code in a hermetic subprocess."""
+_WORKER = None
+_WORKER_LOCK = threading.Lock()
+
+# Long-lived plotting worker: imports matplotlib ONCE, then executes each diagram
+# in a fresh namespace. Avoids the ~1-2s matplotlib cold-start on every attempt.
+_WORKER_SCRIPT = r'''
+import os, sys, io, json
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import numpy as np
+
+def run(code):
+    ns = {"plt": plt, "np": np, "matplotlib": matplotlib}
+    old_stdout = sys.stdout
+    sys.stdout = io.StringIO()  # swallow any prints from generated code
+    try:
+        exec(compile(code, "<diagram>", "exec"), ns)
+        plt.close("all")
+        return {"ok": True, "error": ""}
+    except Exception as e:
+        plt.close("all")
+        return {"ok": False, "error": (str(e) or "execution error")}
+    finally:
+        sys.stdout = old_stdout
+
+def main():
+    while True:
+        line = sys.stdin.readline()
+        if not line:
+            break
+        try:
+            task = json.loads(line)
+        except Exception:
+            print(json.dumps({"ok": False, "error": "bad task"}))
+            sys.stdout.flush()
+            continue
+        print(json.dumps(run(task.get("code", ""))))
+        sys.stdout.flush()
+
+if __name__ == "__main__":
+    main()
+'''
+
+
+def _ensure_worker():
+    global _WORKER
+    with _WORKER_LOCK:
+        if _WORKER is not None and _WORKER.poll() is None:
+            return _WORKER
+        try:
+            script = os.path.join(tempfile.gettempdir(), "diagram_worker.py")
+            with open(script, "w", encoding="utf-8") as f:
+                f.write(_WORKER_SCRIPT)
+            # stderr -> DEVNULL: the worker reports errors via JSON on stdout.
+            # Piping stderr without draining it can deadlock the worker once the
+            # OS pipe buffer fills (matplotlib warnings), so we deliberately
+            # discard it. CREATE_NO_WINDOW keeps the worker from popping a
+            # console window on Windows.
+            popen_kwargs = dict(
+                stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL, text=True,
+                env=_safe_env(), cwd=tempfile.gettempdir(),
+            )
+            if hasattr(subprocess, "CREATE_NO_WINDOW"):
+                popen_kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
+            _WORKER = subprocess.Popen([sys.executable, script], **popen_kwargs)
+        except Exception:
+            _WORKER = None
+    return _WORKER
+
+
+def _run_via_worker(full_code):
+    """Run plotting code in the persistent worker. Returns (worker, None) on
+    success, or (None, err). Errors prefixed 'INFRA:' mean the worker itself
+    failed and the caller should fall back to a fresh subprocess."""
+    worker = _ensure_worker()
+    if worker is None:
+        return None, "INFRA: worker unavailable"
+    try:
+        worker.stdin.write(json.dumps({"code": full_code}) + "\n")
+        worker.stdin.flush()
+    except Exception as e:
+        return None, f"INFRA: worker write failed: {e}"
+
+    result = {}
+    exc = []
+
+    def _read():
+        try:
+            result["line"] = worker.stdout.readline()
+        except Exception as e:  # pragma: no cover
+            exc.append(e)
+
+    th = threading.Thread(target=_read, daemon=True)
+    th.start()
+    th.join(120)
+    if th.is_alive():
+        try:
+            worker.kill()
+        except Exception:
+            pass
+        global _WORKER
+        _WORKER = None
+        return None, "INFRA: diagram generation timed out"
+    if exc:
+        return None, f"INFRA: worker read error: {exc[0]}"
+    line = result.get("line", "")
+    try:
+        data = json.loads(line)
+    except Exception:
+        return None, "INFRA: worker returned unparseable output"
+    if not data.get("ok"):
+        # Genuine plotting error -> propagate as a normal failure (no fallback).
+        return None, f"Diagram generation failed: {data.get('error', 'unknown error')}"
+    return worker, None
+
+
+def _run_plotting_code_subprocess(full_code):
+    """Original one-shot subprocess executor — robust fallback."""
     tmp_py = os.path.join(tempfile.gettempdir(), f"diagram_{uuid.uuid4().hex[:12]}.py")
     try:
         with open(tmp_py, "w", encoding="utf-8") as f:
             f.write(full_code)
-
         proc = subprocess.run(
             [sys.executable, tmp_py],
-            capture_output=True,
-            text=True,
-            timeout=90,
-            env=_safe_env(),
-            cwd=tempfile.gettempdir(),
+            capture_output=True, text=True, timeout=90,
+            env=_safe_env(), cwd=tempfile.gettempdir(),
         )
     except subprocess.TimeoutExpired:
         return None, "Diagram generation failed: plotting code timed out."
@@ -240,7 +361,6 @@ def _run_plotting_code(full_code: str):
             os.remove(tmp_py)
         except Exception:
             pass
-
     if proc.returncode != 0:
         stderr = (proc.stderr or proc.stdout or "").strip()
         last_line = stderr.splitlines()[-1] if stderr else "no output produced"
@@ -252,17 +372,19 @@ def _run_plotting_code(full_code: str):
     return proc, None
 
 
-def generate_diagram(concept: str) -> str:
-    """Render a self-verified, mathematically correct diagram for `concept`.
+def _run_plotting_code(full_code):
+    """Execute LLM-generated plotting code. Uses the persistent worker for speed;
+    falls back to a fresh subprocess if the worker infrastructure fails."""
+    proc, err = _run_via_worker(full_code)
+    if err is None:
+        return proc, None
+    if err.startswith("INFRA:"):
+        return _run_plotting_code_subprocess(full_code)
+    return None, err
 
-    Asks Gemini to write self-contained Python (matplotlib) plotting code,
-    executes it in an isolated subprocess, saves the result as a .png into the
-    Obsidian attachment folder, then SELF-VERIFIES the image is valid and
-    correctly depicts the concept. On failure it retries with the reviewer's
-    feedback. Returns an Obsidian image embed (`![[...]]`) on success, a
-    warning-embed if verification could not confirm correctness, or a plain
-    error string on hard failure (so the tutor can continue without crashing).
-    """
+
+def generate_diagram(concept: str) -> str:
+    """Render a self-verified diagram for `concept`: writes+executes matplotlib code in a sandbox, self-verifies the PNG, and returns an Obsidian `![[...]]` embed (or a warning/error string)."""
     attachment_dir, base_dir = _resolve_attachment_dir()
     filename = f"diagram_{uuid.uuid4().hex[:12]}.png"
     output_path = os.path.join(attachment_dir, filename)
@@ -275,6 +397,15 @@ def generate_diagram(concept: str) -> str:
         "import numpy as np\n"
         f"OUTPUT_PATH = r'{output_path}'\n"
     )
+
+    # Fast path: re-use previously verified plotting code (skips 2 API calls).
+    cached_code = cache_get("diagram", "diagram:" + concept)
+    if cached_code:
+        full_code = header + "\n" + cached_code
+        proc, err = _run_plotting_code(full_code)
+        if not err and os.path.isfile(output_path):
+            rel = os.path.relpath(output_path, base_dir).replace(os.sep, "/")
+            return f"![[{rel}]]"
 
     last_issues = ""
     for attempt in range(1, _MAX_VERIFY_ATTEMPTS + 1):
@@ -295,6 +426,7 @@ def generate_diagram(concept: str) -> str:
 
         ok, issues = _verify_diagram(output_path, concept)
         if ok:
+            cache_set("diagram", "diagram:" + concept, code)
             rel = os.path.relpath(output_path, base_dir).replace(os.sep, "/")
             embed = f"![[{rel}]]"
             # Be honest: if the vision reviewer couldn't actually run (no

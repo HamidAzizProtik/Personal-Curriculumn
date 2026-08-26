@@ -40,6 +40,6 @@ def get_client():
     if _client is None:
         from google import genai
         from google.genai import types
-        _client = genai.Client(http_options=types.HttpOptions(timeout=60000))
+        _client = genai.Client(http_options=types.HttpOptions(timeout=120000))
     return _client
 

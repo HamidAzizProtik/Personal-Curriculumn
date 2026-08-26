@@ -17,8 +17,8 @@ EXECUTION PHASES:
 
 1. PROBE PHASE (be THOROUGH — the harness enforces a minimum depth):
    - Use `probe_prerequisite(prerequisite, question, options, correct_idx, explanation, difficulty)` for EVERY prerequisite strand the lesson depends on. Name the strand EXACTLY in `prerequisite` (e.g. "mental addition: 2-digit", "multiplication: behind-10s trick").
-   - Binary-search EACH strand to the student's FAILURE boundary: start broad/easy, then probe medium, then HARD on the same strand until they miss. Set `difficulty` honestly. This is how you find the real edge of understanding.
-   - Probe BROADLY (many distinct strands) — the harness REQUIRES a minimum number of distinct strands and total quizzes before `complete_probe` succeeds. If BLOCKED, keep probing more strands, and go deeper (hard) on strands they only partially know.
+   - Binary-search EACH strand to the student's FAILURE boundary: easy -> medium -> hard until they miss (stop at the harness per-strand probe cap). Cover the BREADTH of the topic — probe many distinct strands, not just a few deeply. Set `difficulty` honestly. This is how you find the real edge of understanding.
+   - Probe BROADLY (many distinct strands) — the harness REQUIRES a minimum number of distinct strands + total quizzes before `complete_probe` succeeds, and CAPS total/per-strand probes so it never drags on. Once the minimums are met, call `complete_probe` rather than opening yet another strand.
    - Calibration auto-derives from these structured probe results (exact known vs missing prerequisites, with the depth at which each failed). You may also call `record_calibration` to refine the estimated level.
 
 2. PLAN PHASE:
@@ -54,7 +54,7 @@ Remember: the student is learning advanced material (A-level maths, philosophy, 
 
 HARD PHASE ENFORCEMENT (the harness enforces this in code — tool calls that violate it are BLOCKED and you will be told to comply):
 - You MUST follow PROBE -> PLAN -> TEACH. The harness refuses `generate_mermaid_dag` until `complete_probe`, and refuses `generate_diagram`/teaching until `complete_plan`.
-- PROBE: use `probe_prerequisite` for every strand; the harness REQUIRES a minimum number of distinct strands + quizzes before `complete_probe` succeeds. Calibration auto-derives from probe results.
+- PROBE: use `probe_prerequisite` for every strand; the harness REQUIRES a minimum number of distinct strands + quizzes (and CAPS total/per-strand probes) before `complete_probe` succeeds. Cover breadth, then `complete_probe`.
 - PLAN: `generate_mermaid_dag` + log it, then MANDATORY `research_topic` fact-check, then `complete_plan()`. The harness blocks `complete_plan` until research was called this phase.
 - TEACH: strictly one node at a time. After a node's `ask_quiz` PASSES, you MUST call `complete_node()` before any new material; the harness blocks `log_to_obsidian`/`generate_diagram` of the next node until you do. Each node also REQUIRES a `research_topic` verification before `complete_node` (constant verification). A failed node quiz re-locks the node until the student passes a retry.
 

@@ -13,6 +13,11 @@ class Phase(Enum):
 # so calibration is real and the planner has an exact boundary to work from.
 MIN_PROBE_STRANDS = 4
 MIN_PROBE_QUIZZES = 6
+# Ceilings so PROBE can never drag on forever. Breadth (distinct strands) is
+# still enforced via the minimums above; these just cap total volume so the
+# student isn't quizzed into oblivion.
+MAX_PROBE_QUIZZES = 14        # hard stop for the whole PROBE phase
+MAX_PROBES_PER_STRAND = 4     # depth ceiling: bounds the binary-search per strand
 
 # Gate tools that advance the machine. Forward tools are blocked until the
 # matching gate passes, so the model physically cannot wing it / skip ahead.
@@ -60,25 +65,35 @@ class PhaseMachine:
         self.node_index = 0
         self.node_passed = False       # last node-verification quiz result
         self.node_researched = False   # research done for the current node
+        self.probe_strand_counts = {}  # strand -> number of times probed
+        self.probe_budget_exhausted = False  # True once MAX_PROBE_QUIZZES hit
 
     # --- gate transitions -------------------------------------------------
     def complete_probe(self, learner=None) -> str:
         if self.phase != Phase.PROBE:
             return (f"BLOCKED: complete_probe is only valid in the PROBE phase. "
                     f"Current phase is {self.phase.value}.")
-        if (len(self.probe_strands) < MIN_PROBE_STRANDS
-                or self.probe_quiz_count < MIN_PROBE_QUIZZES):
+        # Minimums met, OR the hard budget cap was reached (forced stop so the
+        # session can never hang inside PROBE). Breadth is guaranteed by the
+        # MIN_PROBE_STRANDS floor; depth by per-strand binary search.
+        mins_met = (len(self.probe_strands) >= MIN_PROBE_STRANDS
+                    and self.probe_quiz_count >= MIN_PROBE_QUIZZES)
+        if not (mins_met or self.probe_budget_exhausted):
             return (f"BLOCKED: PROBE must be thorough. Assessed "
                     f"{len(self.probe_strands)} strands / {self.probe_quiz_count} "
                     f"quizzes; minimum required: {MIN_PROBE_STRANDS} distinct "
-                    f"strands and {MIN_PROBE_QUIZZES} quizzes. Keep probing every "
-                    f"prerequisite strand the lesson depends on.")
+                    f"strands and {MIN_PROBE_QUIZZES} quizzes (ceiling "
+                    f"{MAX_PROBE_QUIZZES}). Cover the breadth of the topic, then "
+                    f"call complete_probe.")
         if learner is not None:
             learner.derive_calibration()
         self.phase = Phase.PLAN
-        return ("PROBE phase complete. Phase is now PLAN. You MAY now call "
-                "`generate_mermaid_dag` to build the lesson DAG (and you MUST "
-                "call `research_topic` to fact-check it before `complete_plan`).")
+        cap_note = (" (ended at probe budget cap; calibration may be partial — "
+                    "later sessions will deepen it)") if self.probe_budget_exhausted else ""
+        return ("PROBE phase complete" + cap_note + ". Phase is now PLAN. You MAY "
+                "now call `generate_mermaid_dag` to build the lesson DAG (and you "
+                "MUST call `research_topic` to fact-check it before "
+                "`complete_plan`).")
 
     def complete_plan(self) -> str:
         if self.phase != Phase.PLAN:
@@ -126,6 +141,10 @@ class PhaseMachine:
             self.probe_quiz_count += 1
             if strand:
                 self.probe_strands.add(strand)
+                self.probe_strand_counts[strand] = (
+                    self.probe_strand_counts.get(strand, 0) + 1)
+            if self.probe_quiz_count >= MAX_PROBE_QUIZZES:
+                self.probe_budget_exhausted = True
 
     def mark_researched(self):
         if self.phase == Phase.PLAN:
@@ -143,10 +162,23 @@ class PhaseMachine:
             self.node_passed = correct
 
     # --- enforcement ------------------------------------------------------
-    def can_execute(self, tool_name: str):
+    def can_execute(self, tool_name: str, args: dict = None):
         """Return (allowed, message). If not allowed, `message` is a BLOCKED
         notice the orchestrator returns as the tool's function response,
         forcing the model back into the phase contract."""
+        if tool_name == "probe_prerequisite":
+            if self.probe_budget_exhausted:
+                return False, (
+                    f"BLOCKED: PROBE budget exhausted "
+                    f"({MAX_PROBE_QUIZZES} quizzes / {MAX_PROBES_PER_STRAND} per "
+                    f"strand). Call `complete_probe` now to advance to PLAN.")
+            strand = (args or {}).get("prerequisite") if args else None
+            if strand and self.probe_strand_counts.get(strand, 0) >= MAX_PROBES_PER_STRAND:
+                return False, (
+                    f"BLOCKED: strand '{strand}' has already been probed "
+                    f"{MAX_PROBES_PER_STRAND} times (binary-search ceiling). "
+                    f"Probe a NEW distinct strand for breadth, or call "
+                    f"`complete_probe`.")
         if tool_name in GATE_TOOLS:
             return True, ""
 
@@ -178,32 +210,15 @@ def build_phase_tools(pm: PhaseMachine, learner=None):
     """Build the gate tool functions bound to a PhaseMachine instance."""
 
     def complete_probe() -> str:
-        """Signal that the PROBE (prerequisite calibration) phase is finished.
-
-        Call this ONLY after you have assessed the student with `probe_prerequisite`
-        across enough distinct prerequisite strands (the harness enforces a
-        minimum depth). Calibration is then auto-derived from the probe results.
-        Returns a status string.
-        """
+        """End the PROBE phase. Call ONLY after probing enough distinct prerequisite strands (harness enforces minimum depth + caps). Calibration auto-derives from results."""
         return pm.complete_probe(learner)
 
     def complete_plan() -> str:
-        """Signal that the PLAN (lesson DAG) phase is finished.
-
-        Call this ONLY after `generate_mermaid_dag` produced the syllabus DAG,
-        it was logged, AND you fact-checked it with `research_topic`. The
-        harness blocks teaching until this gate passes. Returns a status string.
-        """
+        """End the PLAN phase. Call ONLY after `generate_mermaid_dag` (logged) + a `research_topic` fact-check. Teaching is blocked until this passes."""
         return pm.complete_plan()
 
     def complete_node() -> str:
-        """Close the current teaching node and unlock the next one.
-
-        Call this ONLY after the current node's `ask_quiz` verification PASSED
-        and you have verified its claims with `research_topic`. The harness
-        blocks any new teaching material until this gate is called, enforcing
-        one-node-at-a-time progression. Returns a status string.
-        """
+        """Close the current node. Call ONLY after its `ask_quiz` PASSED and its claims were verified with `research_topic`. Unlocks the next node (one-at-a-time)."""
         return pm.complete_node()
 
     return [complete_probe, complete_plan, complete_node]

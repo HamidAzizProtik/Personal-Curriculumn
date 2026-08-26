@@ -12,7 +12,7 @@ def get_obsidian_path() -> str:
     return raw_path
 
 def log_to_obsidian(content: str) -> str:
-    """Appends formatted Markdown content directly into the active Obsidian lesson file."""
+    """Append Markdown `content` to the active Obsidian lesson file. Returns a confirmation string."""
     path = get_obsidian_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "a", encoding="utf-8") as f:
