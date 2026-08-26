@@ -80,6 +80,9 @@ vault_path.txt
 vault_path*
 *.vault
 
+# --- Local learner state: regenerates on first run; keep study data out of VCS ---
+learner_profile.json
+
 # --- Obsidian / personal knowledge vault (defensive; lives outside repo too) ---
 personal-curriculumn/
 personal-curriculum/
@@ -339,6 +342,7 @@ coverage/
 *.local
 local.*
 *-local.*
+learner_profile.json
 
 # Package lockfiles that occasionally embed private registry auth
 # (package-lock.json / yarn.lock are usually safe; uncomment only if needed)

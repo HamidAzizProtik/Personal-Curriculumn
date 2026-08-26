@@ -5,7 +5,12 @@ def get_obsidian_path() -> str:
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     path_file = os.path.join(base_dir, "vault_path.txt")
     if not os.path.exists(path_file):
-        raise FileNotFoundError(f"vault_path.txt not found at {path_file}")
+        raise FileNotFoundError(
+            "vault_path.txt not found. Create it in the project root with a "
+            "single line containing the absolute path to your Obsidian lesson "
+            "note (see README.md -> Setup). Expected location: "
+            f"{path_file}"
+        )
     
     with open(path_file, "r", encoding="utf-8-sig") as f:
         raw_path = f.read().strip().strip('"').strip("'")

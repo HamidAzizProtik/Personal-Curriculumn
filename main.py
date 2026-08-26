@@ -236,14 +236,19 @@ def run_tutor(topic: str, resume: bool = False):
     complete_probe, complete_plan, complete_node = phase_gate_tools
     probe_prerequisite, record_calibration = learner_tools
 
-    obsidian_path = get_obsidian_path()
+    try:
+        obsidian_path = get_obsidian_path()
+    except FileNotFoundError as e:
+        print(f"\n[Setup needed]: {e}")
+        return
     os.makedirs(os.path.dirname(obsidian_path), exist_ok=True)
-    
+
     with open(obsidian_path, "a", encoding="utf-8") as f:
         f.write(f"\n\n# Learning Session: {topic}\n*Session initialized live via Gemini Tutor Harness*\n\n---\n")
 
     print(f"\n[Session Active]: Note File -> {obsidian_path}")
     print(f"[AI Tutor v{VERSION}] PROBE -> PLAN -> TEACH. Be precise; the harness enforces each gate.")
+    print(f"[Model]: {MODEL}")
 
     tools = [
         log_to_obsidian,
