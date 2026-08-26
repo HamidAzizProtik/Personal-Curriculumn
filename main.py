@@ -9,7 +9,7 @@ from google import genai
 from google.genai import types
 from google.genai.errors import APIError
 
-from config import MODEL, VERSION, get_client
+from config import MODEL, VERSION, get_client, menu
 from extensions.md_log import log_to_obsidian, get_obsidian_path
 from extensions.quiz import ask_quiz
 from extensions.source import record_source
@@ -23,7 +23,7 @@ import time
 import json
 import hashlib
 
-from throttle import pace, _is_rate_limit, _retry_after, BACKOFF_BASE, MAX_RETRIES
+from throttle import pace, _is_rate_limit, _retry_after, BACKOFF_BASE, BACKOFF_FACTOR, MAX_RETRIES
 from io_helpers import is_interactive, read_reply
 
 
@@ -51,7 +51,15 @@ def load_api_env():
                 os.environ["GEMINI_API_KEY"] = line
 
 
-def _stream_chat(chat, message, prefix="[Tutor]: "):
+class _Streamed:
+    """Lightweight accumulator for a streamed model response."""
+
+    def __init__(self):
+        self.text = ""
+        self.function_calls: list = []
+
+
+def _stream_chat(chat, message, prefix="[Tutor]: ") -> _Streamed:
     """Send a message with response streaming.
 
     Prints the tutor's text tokens live (so the session feels responsive
@@ -61,11 +69,6 @@ def _stream_chat(chat, message, prefix="[Tutor]: "):
     Resilient to free-tier rate limits: a 429/5xx triggers an exponential
     backoff and retry rather than ending the session.
     """
-    class _Streamed:
-        def __init__(self):
-            self.text = ""
-            self.function_calls = []
-
     out = _Streamed()
     printed_prefix = False
     delay = BACKOFF_BASE
@@ -286,6 +289,7 @@ def run_tutor(topic: str, resume: bool = False):
         chat = _make_chat()
 
     # Prime the conversation.
+    response: _Streamed
     try:
         if resumed:
             print("[Resumed] Restoring previous session state.")
@@ -410,6 +414,7 @@ def run_tutor(topic: str, resume: bool = False):
 
 
 if __name__ == "__main__":
+    menu()
     # Topic priority: CLI argument -> TUTOR_TOPIC env -> interactive prompt.
     # `--resume` rebuilds a previously throttled/killed session for the topic.
     args = sys.argv[1:]
