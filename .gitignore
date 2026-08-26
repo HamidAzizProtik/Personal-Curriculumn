@@ -324,6 +324,13 @@ exports/
 downloads/
 uploads/
 artifacts/
+# Generated diagram images (produced by the diagram agent; live in the Obsidian vault)
+*.png
+*.jpg
+*.jpeg
+*.svg
+*.gif
+*.webp
 coverage/
 .hugo_build.lock
 

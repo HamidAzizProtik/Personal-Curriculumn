@@ -1,10 +1,10 @@
 import os
-from google import genai
+from config import MODEL, get_client
 
 def generate_mermaid_dag(topic: str, prerequisite_summary: str = "Baseline") -> str:
     """Sub-agent: Generates clean Mermaid.js graph TD code for learning paths."""
     try:
-        client = genai.Client()
+        client = get_client()
         prompt = f"""
 Create a detailed prerequisite learning path for topic: '{topic}'.
 User Knowledge Baseline: {prerequisite_summary}
@@ -13,9 +13,11 @@ Return ONLY valid Mermaid.js graph code (graph TD).
 Do NOT wrap in markdown backticks.
 Keep node text short and granular.
 """
+        from google.genai import types
         response = client.models.generate_content(
-            model='gemini-3.6-flash',
-            contents=prompt
+            model=MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(temperature=0.2),
         )
         text = (response.text or "").strip()
         if text.startswith("```mermaid"):
