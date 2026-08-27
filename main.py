@@ -28,27 +28,32 @@ from io_helpers import is_interactive, read_reply
 
 
 def load_api_env():
-    """Load credentials from api.env if GEMINI_API_KEY is not already set.
+    """Load credentials from a local env file if GEMINI_API_KEY is not set.
 
-    Supports both `KEY=VALUE` lines and a bare key on its own line.
-    This lets the harness run from a plain terminal without manually
-    exporting the variable first. No-op if the key is already present.
+    Reads, in order: `api.env` then `.env` (first match wins). Supports both
+    `KEY=VALUE` lines and a bare key on its own line. This lets the harness run
+    from a plain terminal without manually exporting the variable first. Your
+    key lives ONLY in this file (git-ignored); it is never hardcoded in code.
+    No-op if the key is already present in the environment.
     """
     if os.environ.get("GEMINI_API_KEY"):
         return
-    api_env = os.path.join(CURRENT_DIR, "api.env")
-    if not os.path.exists(api_env):
-        return
-    with open(api_env, "r", encoding="utf-8-sig") as f:
-        for raw in f:
-            line = raw.strip()
-            if not line or line.startswith("#"):
-                continue
-            if "=" in line:
-                key, val = line.split("=", 1)
-                os.environ[key.strip()] = val.strip().strip('"').strip("'")
-            elif not os.environ.get("GEMINI_API_KEY"):
-                os.environ["GEMINI_API_KEY"] = line
+    for fname in ("api.env", ".env"):
+        api_env = os.path.join(CURRENT_DIR, fname)
+        if not os.path.exists(api_env):
+            continue
+        with open(api_env, "r", encoding="utf-8-sig") as f:
+            for raw in f:
+                line = raw.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "=" in line:
+                    key, val = line.split("=", 1)
+                    os.environ[key.strip()] = val.strip().strip('"').strip("'")
+                elif not os.environ.get("GEMINI_API_KEY"):
+                    os.environ["GEMINI_API_KEY"] = line
+        if os.environ.get("GEMINI_API_KEY"):
+            return
 
 
 class _Streamed:
@@ -208,7 +213,7 @@ def run_tutor(topic: str, resume: bool = False):
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         print("[Error]: GEMINI_API_KEY environment variable is missing. "
-              "Set it or add it to api.env.")
+              "Set it, or add it to api.env / .env (see README).")
         return
 
     # Reuse the shared, pooled client (same generous 120s timeout) so sub-agent
