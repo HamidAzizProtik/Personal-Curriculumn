@@ -1,3 +1,4 @@
+# DEPRECATED
 # AI Tutor
 
 A one-to-one AI tutor that runs a strict, pedagogically-grounded teaching loop:
